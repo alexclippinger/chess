@@ -26,6 +26,31 @@ class BoardState:
         x, y = position
         return self.board[x][y] is None
 
+    def is_path_clear(self, start, end):
+        """Check if all squares between a start and end square are empty"""
+        start_row, start_col = start
+        end_row, end_col = end
+        row_step = 1 if end_row > start_row else -1 if end_row < start_row else 0
+        col_step = 1 if end_col > start_col else -1 if end_col < start_col else 0
+
+        current_row, current_col = start_row + row_step, start_col + col_step
+        while (current_row, current_col) != end:
+            if self.board[current_row][current_col] is not None:
+                return False
+            current_row += row_step
+            current_col += col_step
+        return True
+
+    def is_move_legal(self, piece, move):
+        """Legal moves are initially empty squares or enemy pieces (capture)"""
+        move_row, move_col = move
+        move_square = self.board[move_row][move_col]
+        if move_square is None:
+            return True
+        if move_square.color != piece.color:
+            return True  # TODO: capture logic ?
+        return False
+
     def get_legal_moves(self, piece: Piece):
         """
         Delete moves from potential_moves that are not legal
@@ -38,16 +63,14 @@ class BoardState:
         # Get list of legal moves
         legal_moves = []
         for move in potential_moves:
-            move_row, move_col = move
-            move_square = self.board[move_row][move_col]
-            if move_square is None:
+            if (
+                self.is_path_clear(piece.position, move)
+                and self.is_move_legal(piece, move)
+                and not isinstance(piece, Knight)  # Knights don't need a clear path
+            ):
                 legal_moves.append(move)
-            elif move_square.color != piece.color and move_square is not None:
-                # TODO self.board.capture_piece()
-                # TODO self.capture_piece_visual()
+            elif self.is_move_legal(piece, move) and isinstance(piece, Knight):
                 legal_moves.append(move)
-            else:
-                continue
 
         return legal_moves
 
