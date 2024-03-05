@@ -7,7 +7,7 @@ class ChessGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.board = BoardState()  # BoardState class manages the game state
-        self.width = self.height = 1024
+        self.width = self.height = 512  # 1024
         self.square_side = (
             self.width // 8
         )  # Floor division to make sure piece fits in square
@@ -63,8 +63,13 @@ class ChessGUI:
         for piece in pieces:
             for color in colors:
                 img_path = f"piece_images/{color}-{piece}.png"
-                img = tk.PhotoImage(file=img_path)
-                self.piece_images[f"{color}-{piece}"] = img
+                img = Image.open(img_path).convert("RGBA")
+                img_resized = img.resize(
+                    (round(self.width / 8), round(self.height / 8)), Image.ANTIALIAS
+                )
+                img_tk = ImageTk.PhotoImage(img_resized)
+                # img = tk.PhotoImage(file=img_path)
+                self.piece_images[f"{color}-{piece}"] = img_tk
 
     def _get_piece_image(self, piece):
         """Helper to get image corresponding to each piece on the board at setup"""
@@ -133,10 +138,24 @@ class ChessGUI:
             self.canvas.itemconfig(last_square, fill=original_color)
             self.cur_highlighted = None
 
+    def _is_capture(self, start, end):
+        captor = self.board.board[start[0]][start[1]]
+        captee = self.board.board[end[0]][end[1]]
+        if captor is not None and captee is not None and captor.color != captee.color:
+            return True
+        return False
+
     def make_move(self, start, end):
         # Move the piece
         start_row, start_col = start
         end_row, end_col = end
+
+        # Handle a piece capture
+        if self._is_capture(start, end):
+            print("Piece capture!")
+            self.delete_piece(end_row, end_col)
+            self.board.capture_piece(end)
+
         self.board.move_piece(start, end)
 
         # Visually move the piece
@@ -146,6 +165,15 @@ class ChessGUI:
         # Restart for next move
         self.deselect_piece()
         self.reset_legal_moves_highlight()
+
+        for inner_list in self.board.board:
+            print(
+                [
+                    obj.__class__.__name__ if obj is not None else "    "
+                    for obj in inner_list
+                ]
+            )
+        print("---------------------------------------")
 
     def select_and_move_piece(self, event):
         """Highlights a piece before moving it. Also may include showing legal moves in the future"""

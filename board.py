@@ -35,7 +35,11 @@ class BoardState:
 
         current_row, current_col = start_row + row_step, start_col + col_step
         while (current_row, current_col) != end:
-            if self.board[current_row][current_col] is not None:
+            if (
+                (current_row > 7 or current_row < 0)
+                or (current_col > 7 or current_row < 0)
+                or self.board[current_row][current_col] is not None
+            ):
                 return False
             current_row += row_step
             current_col += col_step
@@ -74,6 +78,10 @@ class BoardState:
 
         return legal_moves
 
+    def capture_piece(self, position):
+        print("ahhh")
+        self.board[position[0]][position[1]] = None
+
     def move_piece(self, start: tuple, end: tuple):
         """
         Moves a piece from the start position to the end position.
@@ -83,7 +91,6 @@ class BoardState:
         end_row, end_col = end
         moving_piece = self.board[start_row][start_col]
 
-        # Move the piece
         self.board[end_row][end_col] = moving_piece
         self.board[start_row][start_col] = None
 
