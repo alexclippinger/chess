@@ -1,4 +1,5 @@
 from pieces import Piece, Pawn, Rook, Knight, Bishop, King, Queen
+from copy import copy
 
 
 class BoardState:
@@ -9,6 +10,20 @@ class BoardState:
         self.move_log = (
             []
         )  # TODO: will want to store chess notation to eventually download game files
+        # Game state related
+        self.last_to_move = None
+        # 1. related to en passant state
+        self.en_passant_squares = []
+        # 2. related to check
+        self.check = False
+        # 3. related to checkmate
+        self.checkmate = False
+        # 4. related to castling
+        # self.castling = False
+
+    ###############
+    # SETUP
+    ###############
 
     def setup_pieces(self):
         for col, piece_class in enumerate(
@@ -21,12 +36,62 @@ class BoardState:
             self.board[6][col] = Pawn("w", (6, col))
             self.board[7][col] = piece_class("w", (7, col))
 
-    def is_square_empty(self, position: tuple):
+    def _get_color(self, opponent=False):
+        if opponent:
+            color = "b" if self.white_to_move else "w"
+        else:
+            color = "w" if self.white_to_move else "b"
+        return color
+
+    def _is_square_empty(self, position: tuple):
         """Going to need something like this to define legal moves"""
         x, y = position
         return self.board[x][y] is None
 
-    def is_path_clear(self, start, end):
+    ###############
+    # PAWN MOVING
+    ###############
+
+    def _get_en_passant_move(self, piece):
+        # "base" cases, probably remove
+        if not isinstance(piece, Pawn) and not isinstance(self.last_to_move, Pawn):
+            return  # make sure both pieces are pawns
+        if self.last_to_move is None or self.last_to_move.first_move is False:
+            return  # make sure there is a last move and that it was the pawn's first move
+
+        # Get position of current pawn and opponent pawn moved on last turn
+        last_to_move = self.last_to_move
+        opp_row, opp_col = last_to_move.position
+        piece_row, piece_col = piece.position
+        direction = -1 if piece.color == "w" else 1
+
+        if piece_row == opp_row and abs(piece_col - opp_col) == 1:
+            potential_move = (piece_row + (1 * direction), opp_col)
+            self.en_passant_squares.append(potential_move)
+            return potential_move
+
+    def _is_legal_pawn_move(self, piece, move):
+        """
+        1. If same file and empty
+        2. If adjacent file and capturable piece
+        3. If en passant (requires knowledge of previous move)
+        """
+        move_square = self.board[move[0]][move[1]]
+        if piece.position[1] == move[1] and move_square is None:
+            return True
+        if (
+            piece.position[1] != move[1]
+            and move_square is not None
+            and move_square.color != piece.color
+        ):
+            return True
+        return False
+
+    ###############
+    # LEGAL MOVES
+    ###############
+
+    def _is_path_clear(self, start, end):
         """Check if all squares between a start and end square are empty"""
         start_row, start_col = start
         end_row, end_col = end
@@ -45,21 +110,19 @@ class BoardState:
             current_col += col_step
         return True
 
-    def is_move_legal(self, piece, move):
+    def _is_move_legal(self, piece, move):
         """Legal moves are initially empty squares or enemy pieces (capture)"""
         move_row, move_col = move
         move_square = self.board[move_row][move_col]
         if move_square is None:
             return True
         if move_square.color != piece.color:
-            return True  # TODO: capture logic ?
+            return True
         return False
 
-    def get_legal_moves(self, piece: Piece):
+    def _get_legal_moves(self, piece: Piece):
         """
         Delete moves from potential_moves that are not legal
-        TODO: For non-knights, pieces cannot jump both friendly or enemy pieces.
-            need to break or something
         """
         # Get piece and potential moves
         potential_moves = piece.potential_moves()
@@ -68,18 +131,90 @@ class BoardState:
         legal_moves = []
         for move in potential_moves:
             if (
-                self.is_path_clear(piece.position, move)
-                and self.is_move_legal(piece, move)
+                self._is_path_clear(piece.position, move)
+                and self._is_move_legal(piece, move)
                 and not isinstance(piece, Knight)  # Knights don't need a clear path
             ):
-                legal_moves.append(move)
-            elif self.is_move_legal(piece, move) and isinstance(piece, Knight):
+                if isinstance(piece, Pawn):
+                    if self._is_legal_pawn_move(piece, move):
+                        legal_moves.append(move)
+                    en_passant = self._get_en_passant_move(piece)
+                    if en_passant is not None:
+                        legal_moves.append(en_passant)
+                else:
+                    legal_moves.append(move)
+            elif self._is_move_legal(piece, move) and isinstance(piece, Knight):
                 legal_moves.append(move)
 
         return legal_moves
 
+    ###############
+    # CHECK
+    ###############
+
+    def _search_all_pieces_for_check(self):
+        """Check if the opposing king is in check"""
+        current_color = self._get_color()
+
+        # Iterate through the entire board, could be a way to cut this down
+        for row in range(len(self.board)):
+            for col in range(len(self.board[row])):
+                piece = self.board[row][col]
+
+                # If the piece belongs to the current player, get its legal moves
+                if piece is not None and piece.color == current_color:
+                    legal_moves = self._get_legal_moves(piece)
+
+                    # Check if any legal move puts the opposing king in check
+                    for move_row, move_col in legal_moves:
+                        target_piece = self.board[move_row][move_col]
+                        if (
+                            target_piece is not None
+                            and isinstance(target_piece, King)
+                            and target_piece.color != current_color
+                        ):
+                            print("Check!")
+                            self.check = True
+                            return  # Return when a check is found
+        self.check = False
+
+    def _simulate_move(self, piece: Piece, move: tuple):
+        original_position = piece.position
+        destination_piece = self.board[move[0]][move[1]]
+        self.board[original_position[0]][original_position[1]] = None
+        self.board[move[0]][move[1]] = piece
+        return original_position, destination_piece
+
+    def _revert_simulated_move(
+        self, piece: Piece, original_position: tuple, destination_piece: Piece
+    ):
+        self.board[original_position[0]][original_position[1]] = piece
+        piece.position = original_position
+        move_position = piece.position
+        self.board[move_position[0]][move_position[1]] = destination_piece
+
+    def _is_in_check(self, color):
+        return False
+
+    def filter_legal_moves_for_check(self, piece: Piece):
+        legal_moves = self._get_legal_moves(piece)
+        color = self._get_color()
+
+        if not self.check:
+            return legal_moves
+        allowed_moves = []
+        for move in legal_moves:
+            original_position, destination_piece = self._simulate_move(piece, move)
+            if not self._is_in_check(color):
+                allowed_moves.append(move)
+            self._revert_simulated_move(piece, original_position, destination_piece)
+        return allowed_moves
+
+    ###############
+    # MOVING
+    ###############
+
     def capture_piece(self, position):
-        print("ahhh")
         self.board[position[0]][position[1]] = None
 
     def move_piece(self, start: tuple, end: tuple):
@@ -96,8 +231,15 @@ class BoardState:
 
         # Update the piece's position and first_move attributes
         moving_piece.position = (end_row, end_col)
+
+        # We want first_move=True for one more turn for en passant
+        self.last_to_move = copy(moving_piece)
         if moving_piece.first_move:
             moving_piece.first_move = False
 
-        # Change turn
+        # Before changing turns we need to know if the opponent is now in check
+        self._search_all_pieces_for_check()
+
+        # Change turn and reset other game states
         self.white_to_move = not self.white_to_move
+        self.en_passant_squares = []

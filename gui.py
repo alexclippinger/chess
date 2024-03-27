@@ -34,11 +34,25 @@ class ChessGUI:
         self.canvas.bind(
             "<Button-1>", self.select_and_move_piece
         )  # Button-1 is left mouse, so left mouse selects a square containing a piece
-
         self.root.mainloop()
 
     ###############
-    # BOARD SETUP #
+    # DEBUGGING
+    ###############
+
+    def print_debug_board(self):
+        # debugging
+        for inner_list in self.board.board:
+            print(
+                [
+                    obj.__class__.__name__ if obj is not None else "    "
+                    for obj in inner_list
+                ]
+            )
+        print("---------------------------------------")
+
+    ###############
+    # BOARD SETUP
     ###############
 
     def draw_board(self):
@@ -84,11 +98,11 @@ class ChessGUI:
         visual_piece = self.canvas.create_image(x, y, image=img)
         self.piece_img_locations[f"{row}{col}"] = visual_piece
 
-    def delete_piece(self, row, col):
+    def _delete_piece(self, row, col):
         piece_to_delete = self.piece_img_locations[f"{row}{col}"]
         self.canvas.delete(piece_to_delete)
 
-    def place_piece(self, row, col):
+    def _place_piece(self, row, col):
         """This is the connection between the "back-end" and "front-end" setup"""
         piece = self.board.board[row][col]
         if piece is not None:
@@ -99,16 +113,24 @@ class ChessGUI:
         """Places pieces on the board"""
         for row in range(8):
             for col in range(8):
-                self.place_piece(row, col)
+                self._place_piece(row, col)
 
     ###############
-    # GAME INPUTS #
+    # HIGHLIGHTING
     ###############
 
-    def highlight_legal_moves(self, legal_moves: list):
+    def _highlight_legal_moves(self, legal_moves: list):
         for potential_square in legal_moves:
-            # We're going to indicate a potential move by creating a circle in the center of the potential squares
             row, col = potential_square
+            # Add highlight for potential captures
+            if (
+                self.board.board[row][col] is not None
+                or potential_square in self.board.en_passant_squares
+            ):
+                print(self.print_debug_board())
+                capture_square = self.squares.get((row, col))
+                self.canvas.itemconfig(capture_square, outline="red", width=3)
+            # Indicate a potential move by creating a circle in the center of the potential squares
             col_center = (col * self.square_side) + (self.square_side / 2)
             row_center = (row * self.square_side) + (self.square_side / 2)
             radius = self.square_side / 8
@@ -121,13 +143,23 @@ class ChessGUI:
             )
             self.legal_move_circles.append(circle)
 
-    def reset_legal_moves_highlight(self):
+    def _reset_legal_moves_highlight(self):
         """Easiest way is just un-highlighting all squares"""
         for circle in self.legal_move_circles:
             self.canvas.delete(circle)
         self.legal_move_circles = []
 
-    def deselect_piece(self):
+    def _reset_capture_highlight(self):
+        """TODO: only process capture squares that are highlighted?"""
+        for tup in self.squares:
+            square = self.squares.get((tup))
+            self.canvas.itemconfig(square, outline="black", width=1)
+
+    ###############
+    # GAME INPUTS
+    ###############
+
+    def _deselect_piece(self):
         """Deselect a piece by changing the color back to original state"""
         if self.cur_highlighted is not None:
             last_row, last_col = self.cur_highlighted
@@ -145,35 +177,32 @@ class ChessGUI:
             return True
         return False
 
-    def make_move(self, start, end):
+    def _make_move(self, start, end):
         # Move the piece
         start_row, start_col = start
         end_row, end_col = end
 
-        # Handle a piece capture
+        # Handle a piece capture TODO: clean up if statements
+        if end in self.board.en_passant_squares:
+            # Update end to the correct pawn position just for deletion
+            direction = 1 if self.board.white_to_move else -1
+            ep_end_row = end_row + (1 * direction)
+            self._delete_piece(ep_end_row, end_col)
+            self.board.capture_piece((ep_end_row, end_col))
         if self._is_capture(start, end):
-            print("Piece capture!")
             self.delete_piece(end_row, end_col)
             self.board.capture_piece(end)
 
         self.board.move_piece(start, end)
 
         # Visually move the piece
-        self.delete_piece(start_row, start_col)
-        self.place_piece(end_row, end_col)
+        self._delete_piece(start_row, start_col)
+        self._place_piece(end_row, end_col)
 
         # Restart for next move
-        self.deselect_piece()
-        self.reset_legal_moves_highlight()
-
-        for inner_list in self.board.board:
-            print(
-                [
-                    obj.__class__.__name__ if obj is not None else "    "
-                    for obj in inner_list
-                ]
-            )
-        print("---------------------------------------")
+        self._deselect_piece()
+        self._reset_legal_moves_highlight()
+        self._reset_capture_highlight()
 
     def select_and_move_piece(self, event):
         """Highlights a piece before moving it. Also may include showing legal moves in the future"""
@@ -184,7 +213,7 @@ class ChessGUI:
 
         # First try to move the piece
         if self.cur_highlighted and selected_square in self.legal_moves:
-            self.make_move(self.cur_highlighted, (row_selected, col_selected))
+            self._make_move(self.cur_highlighted, (row_selected, col_selected))
         elif selected_piece is not None and (
             self.board.white_to_move
             and selected_piece.color == "w"
@@ -192,15 +221,15 @@ class ChessGUI:
             and selected_piece.color == "b"
         ):
             # De-select the current square and reset legal move highlighting
-            self.deselect_piece()
-            self.reset_legal_moves_highlight()
+            self._deselect_piece()
+            self._reset_legal_moves_highlight()
             # Select the new square
             selected_square = self.squares.get((row_selected, col_selected))
             self.canvas.itemconfig(selected_square, fill="#90EE90")
             self.cur_highlighted = (row_selected, col_selected)
             # Highlight legal moves
-            self.legal_moves = self.board.get_legal_moves(selected_piece)
-            self.highlight_legal_moves(self.legal_moves)
+            self.legal_moves = self.board.filter_legal_moves_for_check(selected_piece)
+            self._highlight_legal_moves(self.legal_moves)
         else:
             return None
 

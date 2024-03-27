@@ -49,7 +49,6 @@ class Piece:
 
 
 class Pawn(Piece):
-
     def potential_moves(self):
         """This will include potential moves not considering board state"""
         potential_moves = []  # initiate list of potential moves
@@ -78,9 +77,12 @@ class Pawn(Piece):
 
 
 class Rook(Piece):
-
     def potential_moves(self):
         """Rooks move in straight lines"""
+        # TODO:
+        # moves = []
+        # if first_move and _castling_logic:
+        #   moves.append(castling)
         return self._straight_moves()
 
 
@@ -124,4 +126,8 @@ class King(Piece):
                 self._append_move_if_valid(
                     start_row + row_move, start_col + col_move, potential_moves
                 )
+        if self.first_move:
+            castle_kingside = (start_row, start_col + 2)
+            castle_queenside = (start_row, start_col - 2)
+            potential_moves.extend([castle_kingside, castle_queenside])
         return potential_moves
