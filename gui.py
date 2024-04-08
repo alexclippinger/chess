@@ -7,7 +7,7 @@ class ChessGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.board = BoardState()  # BoardState class manages the game state
-        self.width = self.height = 512  # 1024
+        self.width = self.height = 1024
         self.square_side = (
             self.width // 8
         )  # Floor division to make sure piece fits in square
@@ -127,7 +127,6 @@ class ChessGUI:
                 self.board.board[row][col] is not None
                 or potential_square in self.board.en_passant_squares
             ):
-                print(self.print_debug_board())
                 capture_square = self.squares.get((row, col))
                 self.canvas.itemconfig(capture_square, outline="red", width=3)
             # Indicate a potential move by creating a circle in the center of the potential squares
@@ -190,7 +189,7 @@ class ChessGUI:
             self._delete_piece(ep_end_row, end_col)
             self.board.capture_piece((ep_end_row, end_col))
         if self._is_capture(start, end):
-            self.delete_piece(end_row, end_col)
+            self._delete_piece(end_row, end_col)
             self.board.capture_piece(end)
 
         self.board.move_piece(start, end)
@@ -204,8 +203,14 @@ class ChessGUI:
         self._reset_legal_moves_highlight()
         self._reset_capture_highlight()
 
+        # What is the board state after the move? For debugging
+        self.print_debug_board()
+        print(f"White to move: {self.board.white_to_move}")
+        print(f"White in check: {self.board.check_white}")
+        print(f"Black in check: {self.board.check_black}")
+
     def select_and_move_piece(self, event):
-        """Highlights a piece before moving it. Also may include showing legal moves in the future"""
+        """Highlights a piece before moving it."""
         row_selected = event.y // self.square_side
         col_selected = event.x // self.square_side
         selected_square = (row_selected, col_selected)

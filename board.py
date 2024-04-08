@@ -15,10 +15,9 @@ class BoardState:
         # 1. related to en passant state
         self.en_passant_squares = []
         # 2. related to check
-        self.check = False
-        # 3. related to checkmate
-        self.checkmate = False
-        # 4. related to castling
+        self.check_white = False
+        self.check_black = False
+        # 3. related to castling
         # self.castling = False
 
     ###############
@@ -102,7 +101,7 @@ class BoardState:
         while (current_row, current_col) != end:
             if (
                 (current_row > 7 or current_row < 0)
-                or (current_col > 7 or current_row < 0)
+                or (current_col > 7 or current_col < 0)
                 or self.board[current_row][current_col] is not None
             ):
                 return False
@@ -152,60 +151,63 @@ class BoardState:
     # CHECK
     ###############
 
-    def _search_all_pieces_for_check(self):
-        """Check if the opposing king is in check"""
-        current_color = self._get_color()
-
-        # Iterate through the entire board, could be a way to cut this down
-        for row in range(len(self.board)):
-            for col in range(len(self.board[row])):
+    def _get_king_position(self, opponent_king=True):
+        king = None
+        for row in range(8):
+            for col in range(8):
                 piece = self.board[row][col]
+                if piece is not None and isinstance(piece, King):
+                    if piece.color != self._get_color() and opponent_king:
+                        return (row, col)
+                    elif piece.color == self._get_color() and not opponent_king:
+                        return (row, col)
 
-                # If the piece belongs to the current player, get its legal moves
-                if piece is not None and piece.color == current_color:
-                    legal_moves = self._get_legal_moves(piece)
-
-                    # Check if any legal move puts the opposing king in check
-                    for move_row, move_col in legal_moves:
-                        target_piece = self.board[move_row][move_col]
-                        if (
-                            target_piece is not None
-                            and isinstance(target_piece, King)
-                            and target_piece.color != current_color
-                        ):
-                            print("Check!")
-                            self.check = True
-                            return  # Return when a check is found
-        self.check = False
+    def _search_for_check(self, opponent_king=True, simulate=False):
+        """Check if the specified king is in check. 'check_for' can be 'opponent' or 'self'."""
+        king_position = self._get_king_position(opponent_king)
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if (
+                    piece is None
+                    or (opponent_king and piece.color != self._get_color())
+                    or (not opponent_king and piece.color == self._get_color())
+                ):
+                    continue
+                if king_position in self._get_legal_moves(piece):
+                    if not simulate:
+                        if self.white_to_move:
+                            self.check_black = True
+                        else:
+                            self.check_white = True
+                    return True
+        if not simulate:
+            if self.white_to_move:
+                self.check_black = False
+            else:
+                self.check_white = False
+        return False
 
     def _simulate_move(self, piece: Piece, move: tuple):
         original_position = piece.position
         destination_piece = self.board[move[0]][move[1]]
         self.board[original_position[0]][original_position[1]] = None
         self.board[move[0]][move[1]] = piece
+        piece.position = move
         return original_position, destination_piece
 
     def _revert_simulated_move(
         self, piece: Piece, original_position: tuple, destination_piece: Piece
     ):
+        self.board[piece.position[0]][piece.position[1]] = destination_piece
         self.board[original_position[0]][original_position[1]] = piece
         piece.position = original_position
-        move_position = piece.position
-        self.board[move_position[0]][move_position[1]] = destination_piece
-
-    def _is_in_check(self, color):
-        return False
 
     def filter_legal_moves_for_check(self, piece: Piece):
-        legal_moves = self._get_legal_moves(piece)
-        color = self._get_color()
-
-        if not self.check:
-            return legal_moves
         allowed_moves = []
-        for move in legal_moves:
+        for move in self._get_legal_moves(piece):
             original_position, destination_piece = self._simulate_move(piece, move)
-            if not self._is_in_check(color):
+            if not self._search_for_check(opponent_king=False, simulate=True):
                 allowed_moves.append(move)
             self._revert_simulated_move(piece, original_position, destination_piece)
         return allowed_moves
@@ -214,32 +216,22 @@ class BoardState:
     # MOVING
     ###############
 
-    def capture_piece(self, position):
-        self.board[position[0]][position[1]] = None
-
-    def move_piece(self, start: tuple, end: tuple):
-        """
-        Moves a piece from the start position to the end position.
-        Ex: Pawn e2-e4 -> Pawn row=2col=4 to row=4col=4
-        """
-        start_row, start_col = start
-        end_row, end_col = end
-        moving_piece = self.board[start_row][start_col]
-
-        self.board[end_row][end_col] = moving_piece
-        self.board[start_row][start_col] = None
-
-        # Update the piece's position and first_move attributes
-        moving_piece.position = (end_row, end_col)
-
-        # We want first_move=True for one more turn for en passant
+    def _finalize_move(self, moving_piece):
         self.last_to_move = copy(moving_piece)
         if moving_piece.first_move:
             moving_piece.first_move = False
 
-        # Before changing turns we need to know if the opponent is now in check
-        self._search_all_pieces_for_check()
-
-        # Change turn and reset other game states
+    def _update_game_state_after_move(self):
+        self._search_for_check(opponent_king=True)
         self.white_to_move = not self.white_to_move
         self.en_passant_squares = []
+
+    def capture_piece(self, position):
+        self.board[position[0]][position[1]] = None
+
+    def move_piece(self, start: tuple, end: tuple):
+        moving_piece = self.board[start[0]][start[1]]
+        self._simulate_move(moving_piece, end)
+        self._finalize_move(moving_piece)
+        self._update_game_state_after_move()
+        return True

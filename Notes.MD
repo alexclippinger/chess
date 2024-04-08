@@ -29,3 +29,6 @@ What are consistent qualities of all pieces?
     - Castle is possible (King/Rook `first_move=True`, no pieces between, not in check or passing through check)
     - Check (king is attacked by opponent, can move or another piece can block)
     - Checkmate (king is attacked and cannot be protected)
+
+**Current Status**:
+Check is currently broken, seems that "simulated" moves are not properly reverted
