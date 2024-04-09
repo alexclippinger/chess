@@ -54,20 +54,27 @@ class ChessGUI:
     # BOARD SETUP
     ###############
 
+    ### Draw the board ###
+
+    def _draw_square(self, row, col, color):
+        x1 = col * self.square_side
+        y1 = row * self.square_side
+        x2 = x1 + self.square_side
+        y2 = y1 + self.square_side
+        square = self.canvas.create_rectangle(
+            x1, y1, x2, y2, fill=color, outline="black", width=1
+        )
+        self.squares[(row, col)] = square
+
     def draw_board(self):
         """Draws an 8x8 board"""
         for row in range(8):
             color = "white" if row % 2 == 0 else "gray"  # Start with white
             for col in range(8):
-                x1 = col * self.square_side
-                y1 = row * self.square_side
-                x2 = x1 + self.square_side
-                y2 = y1 + self.square_side
-                square = self.canvas.create_rectangle(
-                    x1, y1, x2, y2, fill=color, outline="black", width=1, tags="area"
-                )
-                self.squares[(row, col)] = square
+                self._draw_square(row, col, color)
                 color = "gray" if color == "white" else "white"  # Alternate with grey
+
+    ### Load piece images ###
 
     def _resize_image(self, img):
         img_resized = img.resize(
@@ -89,6 +96,8 @@ class ChessGUI:
         for piece in pieces:
             for color in colors:
                 self._load_image(color, piece)
+
+    ### Visually moving (placing and deleting) pieces ###
 
     def _get_piece_image(self, piece):
         """Helper to get image corresponding to each piece on the board at setup"""
@@ -124,6 +133,8 @@ class ChessGUI:
     # HIGHLIGHTING
     ###############
 
+    ### Highlight moves and captures ###
+
     def _highlight_potential_capture(self, square):
         row, col = square
         if (
@@ -151,6 +162,8 @@ class ChessGUI:
         for potential_square in legal_moves:
             self._highlight_potential_move(potential_square)
             self._highlight_potential_capture(potential_square)
+
+    ### Reset highlights ###
 
     def _reset_legal_moves_highlight(self):
         """Easiest way is just un-highlighting all squares"""
@@ -190,6 +203,11 @@ class ChessGUI:
             return True
         return False
 
+    def _handle_capture(self, start, end):
+        if self._is_capture(start, end):
+            self._delete_piece(end[0], end[1])
+            self.board_state.capture_piece(end)
+
     def _handle_en_passant(self, end):
         if end in self.board_state.en_passant_squares:
             # Update end to the correct pawn position just for deletion
@@ -197,11 +215,6 @@ class ChessGUI:
             ep_end_row = end[0] + (1 * direction)
             self._delete_piece(ep_end_row, end[1])
             self.board_state.capture_piece((ep_end_row, end[1]))
-
-    def _handle_capture(self, start, end):
-        if self._is_capture(start, end):
-            self._delete_piece(end[0], end[1])
-            self.board_state.capture_piece(end)
 
     def _handle_castle(self, end):
         if self.board_state.castled_rook_position is not None:
