@@ -13,3 +13,5 @@
     - Indicate draw
 2. Game Logic
     - Threefold repetition
+3. **Single-responsibility**
+4. **Testing**
