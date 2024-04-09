@@ -7,18 +7,14 @@ class BoardState:
         self.board = [[None for _ in range(8)] for _ in range(8)]
         self.setup_pieces()
         self.white_to_move = True
-        self.move_log = (
-            []
-        )  # TODO: will want to store chess notation to eventually download game files
+        # TODO: will want to store chess notation to eventually download game files
+        self.move_log = []
         # Game state related
         self.last_to_move = None
-        # 1. related to en passant state
         self.en_passant_squares = []
-        # 2. related to check
         self.check_white = False
         self.check_black = False
-        # 3. related to castling
-        # self.castling = False
+        self.castled_rook_position = None
 
     ###############
     # SETUP
@@ -42,10 +38,12 @@ class BoardState:
             color = "w" if self.white_to_move else "b"
         return color
 
-    def _is_square_empty(self, position: tuple):
-        """Going to need something like this to define legal moves"""
-        x, y = position
-        return self.board[x][y] is None
+    def _get_back_rank(self, opponent=False):
+        if opponent:
+            back_rank = 0 if self.white_to_move else 7
+        else:
+            back_rank = 7 if self.white_to_move else 0
+        return back_rank
 
     ###############
     # PAWN MOVING
@@ -85,6 +83,88 @@ class BoardState:
         ):
             return True
         return False
+
+    def _promote_pawn_to_queen(self, position):
+        self.board[position[0]][position[1]] = Queen(self._get_color(), position)
+
+    ###############
+    # CASTLING
+    ###############
+
+    def _is_square_under_attack(self, position):
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece is not None and piece.color == self._get_color(opponent=True):
+                    moves = self.filter_legal_moves_for_check(piece)
+                    if position in moves:
+                        return True
+        return False
+
+    def _is_castle_through_check(self, start, end):
+        direction = 1 if end[1] > start[1] else -1
+        for col in range(start[1], end[1] + direction, direction):
+            if self._is_square_under_attack((start[0], col)):
+                return True
+        return False
+
+    def _is_castle_legal(self, king):
+        in_check = self.check_white if self.white_to_move else self.check_white
+        if not isinstance(king, King) or not king.first_move or in_check:
+            return False
+
+        row = self._get_back_rank()
+        kingside_rook = self.board[row][7]
+        queenside_rook = self.board[row][0]
+
+        if (
+            isinstance(kingside_rook, Rook)
+            and kingside_rook.first_move
+            and self._is_path_clear(king.position, kingside_rook.position)
+            and not self._is_castle_through_check(king.position, kingside_rook.position)
+        ):
+            return True
+        elif (
+            isinstance(queenside_rook, Rook)
+            and queenside_rook.first_move
+            and self._is_path_clear(king.position, queenside_rook.position)
+            and not self._is_castle_through_check(
+                king.position, queenside_rook.position
+            )
+        ):
+            return True
+        else:
+            return False
+
+    def _get_rook_positions_for_castling(self, kingside):
+        row = self._get_back_rank()
+        if kingside:
+            start, end = (row, 7), (row, 5)
+        else:
+            start, end = (row, 0), (row, 3)  # Queenside rook's start and end positions
+        return start, end
+
+    def _get_king_destination_for_castling(self, kingside):
+        row = self._get_back_rank()
+        return (row, 6) if kingside else (row, 2)
+
+    def _move_pieces_for_castling(self, king, end):
+        if self._is_castle_legal(king):
+            kingside = end[1] == 6
+            queenside = end[1] == 2
+            if not (kingside or queenside):
+                return
+
+            rook_start, rook_end = self._get_rook_positions_for_castling(kingside)
+            rook = self.board[rook_start[0]][rook_start[1]]
+            king_end = self._get_king_destination_for_castling(kingside)
+
+            self.castled_rook_position = rook.position
+            self._simulate_move(king, king_end)
+            self._simulate_move(rook, rook_end)
+            self._finalize_move(rook)
+            self._finalize_move(king)
+            self._update_game_state_after_move()
 
     ###############
     # LEGAL MOVES
@@ -129,10 +209,8 @@ class BoardState:
         # Get list of legal moves
         legal_moves = []
         for move in potential_moves:
-            if (
-                self._is_path_clear(piece.position, move)
-                and self._is_move_legal(piece, move)
-                and not isinstance(piece, Knight)  # Knights don't need a clear path
+            if self._is_path_clear(piece.position, move) and self._is_move_legal(
+                piece, move
             ):
                 if isinstance(piece, Pawn):
                     if self._is_legal_pawn_move(piece, move):
@@ -140,8 +218,20 @@ class BoardState:
                     en_passant = self._get_en_passant_move(piece)
                     if en_passant is not None:
                         legal_moves.append(en_passant)
-                else:
+                elif isinstance(piece, King):
+                    if abs(piece.position[1] - move[1]) > 1 and self._is_castle_legal(
+                        piece
+                    ):
+                        legal_moves.append(move)
+                    if (
+                        abs(piece.position[1] - move[1]) == 1
+                        or piece.position[0] != move[0]
+                    ):
+                        legal_moves.append(move)
+                elif not isinstance(piece, Knight):
                     legal_moves.append(move)
+                else:
+                    continue
             elif self._is_move_legal(piece, move) and isinstance(piece, Knight):
                 legal_moves.append(move)
 
@@ -152,7 +242,6 @@ class BoardState:
     ###############
 
     def _get_king_position(self, opponent_king=True):
-        king = None
         for row in range(8):
             for col in range(8):
                 piece = self.board[row][col]
@@ -231,7 +320,13 @@ class BoardState:
 
     def move_piece(self, start: tuple, end: tuple):
         moving_piece = self.board[start[0]][start[1]]
-        self._simulate_move(moving_piece, end)
-        self._finalize_move(moving_piece)
-        self._update_game_state_after_move()
-        return True
+        if isinstance(moving_piece, King) and abs(start[1] - end[1]) > 1:
+            self._move_pieces_for_castling(moving_piece, end)
+        else:
+            self._simulate_move(moving_piece, end)
+            if isinstance(moving_piece, Pawn):
+                end_row = self._get_back_rank(opponent=True)
+                if end[0] == end_row:
+                    self._promote_pawn_to_queen(end)
+            self._finalize_move(moving_piece)
+            self._update_game_state_after_move()

@@ -11,9 +11,7 @@ class ChessGUI:
         self.square_side = (
             self.width // 8
         )  # Floor division to make sure piece fits in square
-        self.squares = (
-            {}
-        )  # Cache squares for highlighting TODO: this doesn't feel right...
+        self.squares = {}
         self.piece_images = {}  # Cache for loaded piece images
         self.piece_img_locations = {}
         self.cur_highlighted = None
@@ -181,18 +179,30 @@ class ChessGUI:
         start_row, start_col = start
         end_row, end_col = end
 
-        # Handle a piece capture TODO: clean up if statements
+        # TODO: clean up if statements
         if end in self.board.en_passant_squares:
             # Update end to the correct pawn position just for deletion
             direction = 1 if self.board.white_to_move else -1
             ep_end_row = end_row + (1 * direction)
             self._delete_piece(ep_end_row, end_col)
             self.board.capture_piece((ep_end_row, end_col))
+
         if self._is_capture(start, end):
             self._delete_piece(end_row, end_col)
             self.board.capture_piece(end)
 
         self.board.move_piece(start, end)
+
+        if self.board.castled_rook_position is not None:
+            print("visual castle kingside")
+            rook_position = self.board.castled_rook_position
+            self._delete_piece(rook_position[0], rook_position[1])
+            rook_end_col = 5 if end[1] == 6 else 3
+            self._place_piece(end_row, rook_end_col)
+            self.board.castled_rook_position = None
+
+        # if self.pawn_promotion:
+        #    print('pawn promotion')
 
         # Visually move the piece
         self._delete_piece(start_row, start_col)
@@ -228,6 +238,7 @@ class ChessGUI:
             # De-select the current square and reset legal move highlighting
             self._deselect_piece()
             self._reset_legal_moves_highlight()
+            self._reset_capture_highlight()
             # Select the new square
             selected_square = self.squares.get((row_selected, col_selected))
             self.canvas.itemconfig(selected_square, fill="#90EE90")
