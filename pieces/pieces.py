@@ -1,11 +1,3 @@
-"""
-Define a piece and everything about it, including
-- color
-- position on the board
-- legal moves
-"""
-
-
 class Piece:
     def __init__(self, color: str, position: tuple):
         self.color = color

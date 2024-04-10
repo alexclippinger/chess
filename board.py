@@ -1,4 +1,4 @@
-from pieces import Piece, Pawn, Rook, Knight, Bishop, King, Queen
+from pieces.pieces import Piece, Pawn, Rook, Knight, Bishop, King, Queen
 from copy import copy
 
 
