@@ -1,6 +1,9 @@
 ### Game Status
 
 #### Finished
+
+Game functions as expected.
+
 1. **Basic Game State**: white or black to move
 2. **En Passant**: pawn moved two steps to be next to opponent pawn on previous move
 3. **Check**: including discovered checks
@@ -13,3 +16,4 @@
     - Indicate draw
 2. Game Logic
     - Threefold repetition
+3. AI opponent
