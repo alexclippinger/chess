@@ -1,3 +1,7 @@
+# Setup
+
+`python gui.py`
+
 ### Game Status
 
 #### Finished
